@@ -35,5 +35,19 @@ module SubpathIdentity
     def reset_config!
       @config = Configuration.new
     end
+
+    # Called from the Railtie's boot-time initializer. Split out so it's
+    # testable without booting a full Rails::Application. A present-but-
+    # blank value is rejected, not just a missing one — ENV.fetch alone
+    # would accept "", and an empty shared session secret derives a
+    # publicly-known SHA256 key (Digest::SHA256.digest("")), making every
+    # identity cookie forgeable by anyone.
+    def require_secrets!
+      [config.shared_session_secret_env_var, config.worker_shared_secret_env_var].each do |var|
+        if ENV[var].to_s.empty?
+          raise "#{var} is not set. Refusing to boot without it."
+        end
+      end
+    end
   end
 end

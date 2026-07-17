@@ -30,14 +30,7 @@ module SubpathIdentity
     # which for a cross-app identity cookie or an origin-verification
     # header means every request accepting forgeable input.
     initializer "subpath_identity.require_secrets" do
-      unless ::Rails.env.local? || ENV["SECRET_KEY_BASE_DUMMY"]
-        config = SubpathIdentity.config
-        [config.shared_session_secret_env_var, config.worker_shared_secret_env_var].each do |var|
-          ENV.fetch(var) do
-            raise "#{var} is not set. Refusing to boot #{::Rails.env} without it."
-          end
-        end
-      end
+      SubpathIdentity.require_secrets! unless ::Rails.env.local? || ENV["SECRET_KEY_BASE_DUMMY"]
     end
 
     # Unshifted, not inserted relative to another middleware — unshift
