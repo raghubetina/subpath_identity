@@ -76,6 +76,27 @@ class SharedIdentityTest < Minitest::Test
     refute decoded.key?(:admin)
   end
 
+  def test_decode_returns_nil_for_a_legacy_token_with_no_version_field
+    key = Digest::SHA256.digest(SECRET)
+    encryptor = ActiveSupport::MessageEncryptor.new(key, cipher: "aes-256-gcm")
+    # No v: key at all — simulates a cookie encoded before FORMAT_VERSION
+    # existed, still decryptable forever under the same secret unless
+    # decode explicitly rejects it.
+    payload = {user_id: 1}.to_json
+    token = encryptor.encrypt_and_sign(payload, expires_in: SubpathIdentity.config.cookie_ttl)
+
+    assert_nil SubpathIdentity::SharedIdentity.decode(SECRET, token)
+  end
+
+  def test_decode_returns_nil_for_an_unrecognized_future_version
+    key = Digest::SHA256.digest(SECRET)
+    encryptor = ActiveSupport::MessageEncryptor.new(key, cipher: "aes-256-gcm")
+    payload = {user_id: 1, v: 999}.to_json
+    token = encryptor.encrypt_and_sign(payload, expires_in: SubpathIdentity.config.cookie_ttl)
+
+    assert_nil SubpathIdentity::SharedIdentity.decode(SECRET, token)
+  end
+
   def test_configuration_is_isolated_per_app_not_hardcoded
     with_config do |c|
       c.allowed_claims = %i[account_id]

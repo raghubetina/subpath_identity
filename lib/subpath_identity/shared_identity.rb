@@ -40,6 +40,14 @@ module SubpathIdentity
         return nil if cookie_value.blank?
 
         raw = JSON.parse(encryptor(secret).decrypt_and_verify(cookie_value), symbolize_names: true)
+        # A message from a different FORMAT_VERSION isn't necessarily
+        # shaped like this one — a legacy cookie encoded before this
+        # field even existed has no `v` at all (nil, never equal to
+        # FORMAT_VERSION), and a cookie from a newer version might carry
+        # claims this version doesn't know how to interpret safely.
+        # Reject rather than guess.
+        return nil unless raw[:v] == FORMAT_VERSION
+
         SubpathIdentity.config.claim_defaults.merge(raw.slice(*SubpathIdentity.config.allowed_claims))
       rescue ActiveSupport::MessageEncryptor::InvalidMessage, JSON::ParserError, TypeError
         nil
