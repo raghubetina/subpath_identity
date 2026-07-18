@@ -4,28 +4,30 @@ require "rails/railtie"
 
 module SubpathIdentity
   class Railtie < ::Rails::Railtie
-    # In development and test, ENV vars this gem needs are given a
-    # known, insecure default rather than failing — there's no Worker in
-    # front of a local `bin/rails server`, and tests need a fixed,
+    # In development and test only, the ENV vars this gem needs are given
+    # a known, insecure default rather than failing — there's no router
+    # in front of a local `bin/rails server`, and tests need a fixed,
     # predictable secret to encode/decode against.
     #
-    # SECRET_KEY_BASE_DUMMY: many Dockerfiles boot this same production
-    # environment during `assets:precompile`, before any real runtime env
-    # vars exist yet. Rails' own secret_key_base resolution already
-    # treats that var as "this boot doesn't need real secrets" for
-    # exactly that reason (see
-    # Rails::Application::Configuration#secret_key_base) — this follows
-    # the same signal.
+    # Note what is deliberately NOT here: SECRET_KEY_BASE_DUMMY. That's
+    # Rails' build-only signal for `assets:precompile`, meant for a single
+    # Docker RUN, and an earlier version of this gem treated it as "skip
+    # the secret guard" too. But a build flag that leaks into a *serving*
+    # process (set on the image or the runtime env instead of one RUN)
+    # would then boot production with these public defaults — a forgeable
+    # worker header and forgeable identity cookies. So the guard now stays
+    # active for every non-development/test boot, asset compilation
+    # included; the build step must supply its own throwaway
+    # SHARED_SESSION_SECRET / WORKER_SHARED_SECRET (see the demo's
+    # Dockerfile) rather than rely on the gem to fall open.
     #
     # development? || test?, not Rails.env.local? — local? only means
     # "development or test" as of Rails 7.1. On 7.0 (which this gem's
     # railties >= 7.0 floor still allows) StringInquirer reads it as
     # "is the env literally named 'local'?", which is false in a normal
-    # dev/test boot — so a 7.0 app would skip these defaults and then
-    # fail the require_secrets guard below. Spelling it out works on
-    # every supported version.
+    # dev/test boot. Spelling it out works on every supported version.
     initializer "subpath_identity.local_secret_defaults", before: "subpath_identity.require_secrets" do
-      if ::Rails.env.development? || ::Rails.env.test? || ENV["SECRET_KEY_BASE_DUMMY"]
+      if ::Rails.env.development? || ::Rails.env.test?
         config = SubpathIdentity.config
         ENV[config.shared_session_secret_env_var] ||= "dev-only-insecure-shared-session-secret"
         ENV[config.worker_shared_secret_env_var] ||= "dev-only-insecure-worker-secret"
@@ -33,14 +35,12 @@ module SubpathIdentity
     end
 
     # Fails at boot, before serving a single request, if either secret is
-    # missing outside development/test — the alternative is silently
-    # trusting whatever ENV.fetch's caller does with a missing value,
-    # which for a cross-app identity cookie or an origin-verification
-    # header means every request accepting forgeable input.
+    # missing or too short outside development/test — the alternative is
+    # silently trusting whatever ENV.fetch's caller does with a missing
+    # value, which for a cross-app identity cookie or an origin-
+    # verification header means every request accepting forgeable input.
     initializer "subpath_identity.require_secrets" do
-      unless ::Rails.env.development? || ::Rails.env.test? || ENV["SECRET_KEY_BASE_DUMMY"]
-        SubpathIdentity.require_secrets!
-      end
+      SubpathIdentity.require_secrets! unless ::Rails.env.development? || ::Rails.env.test?
     end
 
     # Unshifted, not inserted relative to another middleware — unshift

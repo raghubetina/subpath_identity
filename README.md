@@ -8,9 +8,16 @@ This gem is deliberately narrow: it's the mechanism, not a design. It doesn't de
 
 ## Installation
 
-```bash
-bundle add subpath_identity
+Not yet released to RubyGems, so install from GitHub — pin a tag for a
+reproducible build:
+
+```ruby
+# Gemfile
+gem "subpath_identity", github: "raghubetina/subpath_identity", tag: "v0.3.0"
 ```
+
+(Once it's published, `bundle add subpath_identity` will be the one-liner;
+until then `bundle add` can't resolve it.)
 
 ## Setup
 
