@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require "rack/mock_request"
+require "rack/mock"
 
 class RequireWorkerOriginTest < Minitest::Test
   SECRET = "worker-secret-value"

@@ -1,5 +1,7 @@
 ## [Unreleased]
 
+- CI now tests the declared floor (Ruby 3.2 / Rails 7.0 / Rack 2.2) alongside the current toolchain, via `gemfiles/rails_7.gemfile`. The Rack-mock test require is portable across Rack 2 and 3 (`rack/mock`, not `rack/mock_request`). Test/CI only — no library change.
+
 ## [0.3.0] - 2026-07-18
 
 - **`SECRET_KEY_BASE_DUMMY` no longer skips the secret guard.** It's Rails' build-only asset-precompile flag; honoring it as "no real secrets needed" meant a serving process that inherited the flag (set on the image or runtime env rather than a single build `RUN`) would boot with the public `dev-only-insecure-*` defaults — a forgeable worker header and forgeable identity cookies. The guard now runs on every non-development/test boot, asset compilation included. **Upgrade note:** your image build's `assets:precompile` step must now supply throwaway `SHARED_SESSION_SECRET` and `WORKER_SHARED_SECRET` values alongside `SECRET_KEY_BASE_DUMMY`, since the gem no longer falls open (see the demo's Dockerfile).
