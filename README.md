@@ -61,10 +61,20 @@ gives you:
 
 Every app in the cluster automatically runs `RequireWorkerOrigin` — no wiring needed beyond the Gemfile entry, it's registered via a Railtie. A request missing or mismatching the `X-Worker-Secret` header gets a `403`, before it reaches any controller, any other middleware your app installs, or an authentication gem's own routing (this matters specifically because some auth gems — Rodauth is one — answer their own routes from middleware and never reach a Rails controller at all, so a `before_action` can't protect them; this has to run ahead of everything).
 
+## Trust model
+
+Read this before adopting the gem — it's the security property you're buying into, not a footnote.
+
+The shared cookie is **symmetric**: it's authenticated encryption keyed on `SHARED_SESSION_SECRET`, and every app that holds the secret can both *read* and *mint* it. That coupling is inherent to symmetric cryptography — the read key is the write key — so any app you let read the identity can also forge one. There is no configuration that separates "verify" from "mint" here, because HMAC/symmetric schemes fundamentally can't.
+
+**This gem therefore assumes every app sharing the secret is mutually trusted** — a cluster one operator owns and deploys, not subpaths rented to third parties. If one of those apps is compromised, it can mint a cookie asserting any `user_id` (impersonating a *display* identity anywhere the cookie is read) and read that account's data from an identity owner's internal API. Gating every real mutation behind your actual auth session rather than `signed_in?` (see below) keeps the damage to display/PII rather than data changes — but it does not remove it. That's the accepted cost of a shared secret.
+
+**If you need relying parties you don't fully trust** — another team's app, a tenant, anything third-party — this mechanism is not enough, by design. Make the identity owner the sole *issuer*: either root-signed tokens (owner holds a private key; relying parties get a verify-only public key) or opaque provider-issued tokens resolved by introspection, and move client-writable preferences (a theme toggle, say) to a separate cookie so relying parties never need mint capability at all. Both are real design changes, not flags. Note the honest limit of even those: a compromised relying party still sees the identity and PII of its *own* visitors, who hand it the credential just by loading a page — the asymmetric upgrade stops the *escalation* (forging identities for users who never visited it), not that.
+
 ## What this gem doesn't do
 
 - Doesn't run authentication. `SubpathIdentity::ControllerHelpers#write_shared_identity` is the primitive; deciding when to call it (after a real login, not just because a request has a plausible-looking cookie) is the calling app's job. See `subpath_identity-provider` for a Rodauth-oriented pattern.
-- Doesn't stop another app in the cluster from writing the cookie. Every app that has `SHARED_SESSION_SECRET` can call `SharedIdentity.encode` — that's necessary for something as simple as a shared dark-mode toggle, but it means the cookie is a *display* credential, not an authorization one. Gate anything that mutates real data behind your actual auth session (Rodauth's, Devise's, whatever it is), not `signed_in?`.
+- Doesn't stop another app in the cluster from writing the cookie — that's the symmetric trust model above, not a bug. The cookie is a *display* credential, not an authorization one: gate anything that mutates real data behind your actual auth session (Rodauth's, Devise's, whatever it is), not `signed_in?`.
 - Doesn't handle the "two apps mint two different `user_id`s for the same person" problem. Have one identity-owning app, and have every other app treat its `user_id` as the only one that exists.
 
 ## Development
