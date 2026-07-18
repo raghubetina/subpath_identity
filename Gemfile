@@ -15,5 +15,5 @@ gem "standard", "~> 1.3"
 group :test do
   # For exercising ControllerHelpers against a real ActionController::Base
   # subclass rather than mocking Rails' controller stack by hand.
-  gem "actionpack", ">= 7.0"
+  gem "actionpack", ">= 8.1"
 end

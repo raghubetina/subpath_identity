@@ -13,7 +13,7 @@ reproducible build:
 
 ```ruby
 # Gemfile
-gem "subpath_identity", github: "raghubetina/subpath_identity", tag: "v0.3.0"
+gem "subpath_identity", github: "raghubetina/subpath_identity", tag: "v0.3.1"
 ```
 
 (Once it's published, `bundle add subpath_identity` will be the one-liner;

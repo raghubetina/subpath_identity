@@ -1,6 +1,8 @@
 ## [Unreleased]
 
-- CI now tests the declared floor (Ruby 3.2 / Rails 7.0 / Rack 2.2) alongside the current toolchain, via `gemfiles/rails_7.gemfile`. The Rack-mock test require is portable across Rack 2 and 3 (`rack/mock`, not `rack/mock_request`). Test/CI only — no library change.
+## [0.3.1] - 2026-07-18
+
+- Declared floors raised to what CI actually tests: `activesupport`/`railties >= 8.1`, `rack >= 3.0`. Rails 7 support was inherited from scaffolding defaults, never a deliberate commitment; rather than carry a 7.0 compatibility matrix for a version the maintainer will never run, the claim now matches the tested toolchain. (The short-lived `gemfiles/rails_7.gemfile` floor job added after 0.3.0 is removed; the portable `rack/mock` test require stays — it works on every Rack.)
 
 ## [0.3.0] - 2026-07-18
 

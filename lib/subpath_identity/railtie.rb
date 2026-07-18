@@ -21,11 +21,9 @@ module SubpathIdentity
     # SHARED_SESSION_SECRET / WORKER_SHARED_SECRET (see the demo's
     # Dockerfile) rather than rely on the gem to fall open.
     #
-    # development? || test?, not Rails.env.local? — local? only means
-    # "development or test" as of Rails 7.1. On 7.0 (which this gem's
-    # railties >= 7.0 floor still allows) StringInquirer reads it as
-    # "is the env literally named 'local'?", which is false in a normal
-    # dev/test boot. Spelling it out works on every supported version.
+    # development? || test? spelled out rather than Rails.env.local? —
+    # identical semantics on supported Rails, and it names the exact two
+    # environments this exception is scoped to.
     initializer "subpath_identity.local_secret_defaults", before: "subpath_identity.require_secrets" do
       if ::Rails.env.development? || ::Rails.env.test?
         config = SubpathIdentity.config
