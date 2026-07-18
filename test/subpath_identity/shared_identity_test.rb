@@ -110,6 +110,20 @@ class SharedIdentityTest < Minitest::Test
     assert_nil SubpathIdentity::SharedIdentity.decode(SECRET, token)
   end
 
+  # A payload that decrypts and verifies cleanly but isn't a JSON object
+  # — null, true, false, a number, a string, an array. A writer sharing
+  # the key can produce any of these; decode must degrade to "no
+  # identity," never raise (null/true/false used to raise NoMethodError).
+  ["null", "true", "false", "42", %("a string"), "[1,2,3]"].each do |json_scalar|
+    define_method("test_decode_returns_nil_for_an_authenticated_non_object_payload_#{json_scalar.gsub(/\W/, "_")}") do
+      key = Digest::SHA256.digest(SECRET)
+      encryptor = ActiveSupport::MessageEncryptor.new(key, cipher: "aes-256-gcm")
+      token = encryptor.encrypt_and_sign(json_scalar, expires_in: SubpathIdentity.config.cookie_ttl)
+
+      assert_nil SubpathIdentity::SharedIdentity.decode(SECRET, token)
+    end
+  end
+
   def test_configuration_is_isolated_per_app_not_hardcoded
     with_config do |c|
       c.allowed_claims = %i[account_id]

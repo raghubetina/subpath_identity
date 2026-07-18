@@ -16,8 +16,16 @@ module SubpathIdentity
     # exactly that reason (see
     # Rails::Application::Configuration#secret_key_base) — this follows
     # the same signal.
+    #
+    # development? || test?, not Rails.env.local? — local? only means
+    # "development or test" as of Rails 7.1. On 7.0 (which this gem's
+    # railties >= 7.0 floor still allows) StringInquirer reads it as
+    # "is the env literally named 'local'?", which is false in a normal
+    # dev/test boot — so a 7.0 app would skip these defaults and then
+    # fail the require_secrets guard below. Spelling it out works on
+    # every supported version.
     initializer "subpath_identity.local_secret_defaults", before: "subpath_identity.require_secrets" do
-      if ::Rails.env.local? || ENV["SECRET_KEY_BASE_DUMMY"]
+      if ::Rails.env.development? || ::Rails.env.test? || ENV["SECRET_KEY_BASE_DUMMY"]
         config = SubpathIdentity.config
         ENV[config.shared_session_secret_env_var] ||= "dev-only-insecure-shared-session-secret"
         ENV[config.worker_shared_secret_env_var] ||= "dev-only-insecure-worker-secret"
@@ -30,7 +38,9 @@ module SubpathIdentity
     # which for a cross-app identity cookie or an origin-verification
     # header means every request accepting forgeable input.
     initializer "subpath_identity.require_secrets" do
-      SubpathIdentity.require_secrets! unless ::Rails.env.local? || ENV["SECRET_KEY_BASE_DUMMY"]
+      unless ::Rails.env.development? || ::Rails.env.test? || ENV["SECRET_KEY_BASE_DUMMY"]
+        SubpathIdentity.require_secrets!
+      end
     end
 
     # Unshifted, not inserted relative to another middleware — unshift

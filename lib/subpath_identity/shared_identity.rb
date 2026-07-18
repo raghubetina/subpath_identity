@@ -46,7 +46,23 @@ module SubpathIdentity
       def decode(secret, cookie_value)
         return nil if cookie_value.blank?
 
-        raw = JSON.parse(encryptor(secret).decrypt_and_verify(cookie_value), symbolize_names: true)
+        # decrypt_and_verify raises InvalidMessage on a wrong-secret or
+        # corrupted cookie, but returns nil on an *expired* one (this
+        # ActiveSupport version), so guard the nil explicitly rather than
+        # feed it to JSON.parse.
+        decrypted = encryptor(secret).decrypt_and_verify(cookie_value)
+        return nil if decrypted.nil?
+
+        raw = JSON.parse(decrypted, symbolize_names: true)
+        # decrypt_and_verify only proves the payload was encrypted with
+        # this key, not that it's the object shape we expect. JSON.parse
+        # happily returns nil/true/false/a number/a string/an array for a
+        # validly-encrypted-but-malformed cookie — which a buggy or
+        # compromised writer that shares the key can produce — and raw[:v]
+        # on a non-Hash would raise (NoMethodError for nil/true/false)
+        # instead of degrading to "no identity." Check the shape first.
+        return nil unless raw.is_a?(Hash)
+
         # A message from a different FORMAT_VERSION isn't necessarily
         # shaped like this one — a legacy cookie encoded before this
         # field even existed has no `v` at all (nil, never equal to
@@ -56,7 +72,7 @@ module SubpathIdentity
         return nil unless raw[:v] == FORMAT_VERSION
 
         SubpathIdentity.config.claim_defaults.merge(raw.slice(*SubpathIdentity.config.allowed_claims))
-      rescue ActiveSupport::MessageEncryptor::InvalidMessage, JSON::ParserError, TypeError
+      rescue ActiveSupport::MessageEncryptor::InvalidMessage, JSON::ParserError
         nil
       end
 
