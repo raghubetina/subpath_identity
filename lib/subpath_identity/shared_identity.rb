@@ -17,7 +17,14 @@ module SubpathIdentity
   # problem with the shared cookie degrades one visitor's session instead
   # of taking an app down.
   module SharedIdentity
-    FORMAT_VERSION = 1
+    # Bump this whenever a format change should invalidate already-issued
+    # cookies. decode rejects anything whose v doesn't match, so bumping
+    # is how you force every outstanding cookie to re-mint — no
+    # SHARED_SESSION_SECRET rotation required. Version 1 was the original
+    # format; it was raised to 2 when a 24h expiry became mandatory,
+    # because the earliest v1 cookies carried no cryptographic expiry and
+    # would otherwise have stayed valid forever under an unchanged secret.
+    FORMAT_VERSION = 2
 
     class << self
       # secret: the raw shared_session_secret value (any length string).

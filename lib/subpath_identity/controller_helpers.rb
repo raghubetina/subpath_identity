@@ -43,6 +43,20 @@ module SubpathIdentity
       }
     end
 
+    # Deletes the shared identity cookie and drops the in-request memo
+    # back to the anonymous defaults, so signed_in? / current_shared_identity
+    # read as signed-out for the rest of this request too, not just the
+    # next one. The counterpart to write_shared_identity: for when
+    # something downstream determines the identity this cookie asserts is
+    # no longer valid (e.g. a relying party learns from the provider that
+    # the account was closed — see subpath_identity-client's
+    # SyncLocalProfile). Because the cookie is Path=/, this signs the
+    # account out across every app in the cluster on its next request.
+    def clear_shared_identity
+      cookies.delete(SubpathIdentity.config.cookie_name, path: "/")
+      @current_shared_identity = SubpathIdentity.config.claim_defaults
+    end
+
     private
 
     def load_shared_identity

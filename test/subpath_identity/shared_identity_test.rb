@@ -76,12 +76,25 @@ class SharedIdentityTest < Minitest::Test
     refute decoded.key?(:admin)
   end
 
-  def test_decode_returns_nil_for_a_legacy_token_with_no_version_field
+  def test_decode_rejects_a_real_prior_format_version_1_token
     key = Digest::SHA256.digest(SECRET)
     encryptor = ActiveSupport::MessageEncryptor.new(key, cipher: "aes-256-gcm")
-    # No v: key at all — simulates a cookie encoded before FORMAT_VERSION
-    # existed, still decryptable forever under the same secret unless
-    # decode explicitly rejects it.
+    # The exact cookie this project actually issued before the version
+    # gate: v: 1, an iat, and — in the earliest form — no cryptographic
+    # expiry at all. Same secret, so it still decrypts; only the version
+    # check stops it from decoding forever. This is the honest legacy
+    # regression: the prior cookie was v: 1, not versionless.
+    payload = {user_id: 7, v: 1, iat: Time.now.to_i}.to_json
+    token = encryptor.encrypt_and_sign(payload)
+
+    assert_nil SubpathIdentity::SharedIdentity.decode(SECRET, token)
+  end
+
+  def test_decode_returns_nil_for_a_token_with_no_version_field
+    key = Digest::SHA256.digest(SECRET)
+    encryptor = ActiveSupport::MessageEncryptor.new(key, cipher: "aes-256-gcm")
+    # Defensive: a malformed/ancient token missing v entirely (nil, never
+    # equal to FORMAT_VERSION) is rejected too, not just a wrong number.
     payload = {user_id: 1}.to_json
     token = encryptor.encrypt_and_sign(payload, expires_in: SubpathIdentity.config.cookie_ttl)
 
