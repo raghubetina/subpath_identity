@@ -20,10 +20,13 @@ module SubpathIdentity
     # can always return a complete, predictable hash.
     attr_accessor :claim_defaults
 
-    # How long a shared identity cookie stays valid, regardless of
-    # SHARED_SESSION_SECRET rotation. Bounds how long a captured or
-    # replayed cookie keeps working. Anything that re-signs the cookie
-    # (login, logout, a profile edit) slides this forward in practice.
+    # How long a shared identity lives, as an ABSOLUTE bound from its
+    # last real authentication, regardless of SHARED_SESSION_SECRET
+    # rotation. Ordinary re-signs (a preference toggle, a cache-key
+    # bump) carry the original deadline forward unchanged; only a write
+    # passing renew_lifetime: true — a login/signup hook — mints a new
+    # window. So a captured or replayed cookie dies at most cookie_ttl
+    # after the victim's last login, no matter what anyone does with it.
     attr_accessor :cookie_ttl
 
     # Env var names, not the secrets themselves — kept as names so the

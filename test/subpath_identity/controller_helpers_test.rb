@@ -57,37 +57,33 @@ class ControllerHelpersTest < Minitest::Test
   def test_an_ordinary_write_preserves_the_identitys_absolute_deadline
     original_deadline = Time.now + 300
     controller = build_controller
-    controller.instance_variable_set(
-      :@current_shared_identity,
-      {user_id: 42, dark_mode: false, _expires_at: original_deadline}
-    )
+    controller.instance_variable_set(:@current_shared_identity, {user_id: 42, dark_mode: false})
+    controller.instance_variable_set(:@shared_identity_expires_at, original_deadline)
 
     controller.write_shared_identity(dark_mode: true)
 
-    decoded = SubpathIdentity::SharedIdentity.decode(
+    decoded, expires_at = SubpathIdentity::SharedIdentity.decode_with_expiry(
       ENV["SHARED_SESSION_SECRET"], controller.send(:cookies)[:_shared_identity]
     )
     assert_equal 42, decoded[:user_id]
     assert_equal true, decoded[:dark_mode]
-    assert_equal original_deadline.to_i, decoded[:_expires_at].to_i,
+    assert_equal original_deadline.to_i, expires_at.to_i,
       "the rewrite must not extend the identity's life"
   end
 
   def test_renew_lifetime_true_mints_a_fresh_absolute_deadline
     stale_deadline = Time.now + 300
     controller = build_controller
-    controller.instance_variable_set(
-      :@current_shared_identity,
-      {user_id: 42, dark_mode: false, _expires_at: stale_deadline}
-    )
+    controller.instance_variable_set(:@current_shared_identity, {user_id: 42, dark_mode: false})
+    controller.instance_variable_set(:@shared_identity_expires_at, stale_deadline)
 
     controller.write_shared_identity(renew_lifetime: true, user_id: 42)
 
-    decoded = SubpathIdentity::SharedIdentity.decode(
+    _decoded, expires_at = SubpathIdentity::SharedIdentity.decode_with_expiry(
       ENV["SHARED_SESSION_SECRET"], controller.send(:cookies)[:_shared_identity]
     )
-    assert_in_delta (Time.now + SubpathIdentity.config.cookie_ttl).to_i, decoded[:_expires_at].to_i, 5
-    assert decoded[:_expires_at] > stale_deadline, "a real auth event mints a new window"
+    assert_in_delta (Time.now + SubpathIdentity.config.cookie_ttl).to_i, expires_at.to_i, 5
+    assert expires_at > stale_deadline, "a real auth event mints a new window"
   end
 
   def test_a_write_with_no_signed_in_identity_mints_a_fresh_deadline
@@ -99,9 +95,37 @@ class ControllerHelpersTest < Minitest::Test
 
     controller.write_shared_identity(dark_mode: true)
 
-    decoded = SubpathIdentity::SharedIdentity.decode(
+    _decoded, expires_at = SubpathIdentity::SharedIdentity.decode_with_expiry(
       ENV["SHARED_SESSION_SECRET"], controller.send(:cookies)[:_shared_identity]
     )
-    assert_in_delta (Time.now + SubpathIdentity.config.cookie_ttl).to_i, decoded[:_expires_at].to_i, 5
+    assert_in_delta (Time.now + SubpathIdentity.config.cookie_ttl).to_i, expires_at.to_i, 5
+  end
+
+  # Regression for the same-request write clobber: write_shared_identity
+  # used to leave @current_shared_identity untouched, so a second write
+  # in the same request merged over the identity that ARRIVED on the
+  # request and its cookie silently discarded the first write's claims
+  # (a relying party's cache-key reissue in a before_action, wiped out
+  # by the action's own dark-mode toggle). Each write must see the one
+  # before it, and the preserved deadline must survive both.
+  def test_two_writes_in_one_request_compose_instead_of_last_write_winning
+    original_deadline = Time.now + 300
+    controller = build_controller
+    controller.instance_variable_set(:@current_shared_identity, {user_id: 42, dark_mode: false})
+    controller.instance_variable_set(:@shared_identity_expires_at, original_deadline)
+
+    controller.write_shared_identity(user_id: 43)
+    controller.write_shared_identity(dark_mode: true)
+
+    assert_equal 43, controller.current_shared_identity[:user_id],
+      "the in-request identity must reflect the first write"
+
+    decoded, expires_at = SubpathIdentity::SharedIdentity.decode_with_expiry(
+      ENV["SHARED_SESSION_SECRET"], controller.send(:cookies)[:_shared_identity]
+    )
+    assert_equal 43, decoded[:user_id], "the final cookie must carry BOTH writes' claims"
+    assert_equal true, decoded[:dark_mode]
+    assert_equal original_deadline.to_i, expires_at.to_i,
+      "the absolute deadline must survive consecutive writes"
   end
 end

@@ -61,10 +61,24 @@ module SubpathIdentity
         encryptor(secret).encrypt_and_sign(payload.to_json, expires_at: deadline)
       end
 
-      # Returns a Hash with exactly the allowed_claims keys (defaults
+      # Returns a Hash with EXACTLY the allowed_claims keys (defaults
       # filled in for anything missing), or nil if there's no valid
-      # identity. Never raises.
+      # identity. Never raises. The exact-keys contract matters: the
+      # result must round-trip straight back into encode
+      # (encode(secret, **decode(secret, token))) without tripping the
+      # allowlist check, so transport metadata like the expiry never
+      # rides inside it — use decode_with_expiry when you need the
+      # deadline too.
       def decode(secret, cookie_value)
+        decode_with_expiry(secret, cookie_value)&.first
+      end
+
+      # Like decode, but returns [claims, expires_at] — the same
+      # exact-keys claims Hash plus the identity's absolute deadline as
+      # a Time — or nil. ControllerHelpers uses the deadline to preserve
+      # the original expiry when re-encoding (a preference write must
+      # not extend the identity's life).
+      def decode_with_expiry(secret, cookie_value)
         return nil if cookie_value.blank?
 
         # decrypt_and_verify raises InvalidMessage on a wrong-secret or
@@ -92,15 +106,12 @@ module SubpathIdentity
         # Reject rather than guess.
         return nil unless raw[:v] == FORMAT_VERSION
         # Defense in depth alongside the encryptor's own expires_at
-        # enforcement, and the source of the :_expires_at value below.
+        # enforcement, and the source of the returned deadline.
         return nil unless raw[:exp].is_a?(Integer) && Time.at(raw[:exp]) > Time.now
 
-        # :_expires_at rides along (outside allowed_claims, stripped by
-        # any re-encode's slice) so ControllerHelpers can preserve the
-        # original absolute deadline when it rewrites a claim.
-        SubpathIdentity.config.claim_defaults
+        claims = SubpathIdentity.config.claim_defaults
           .merge(raw.slice(*SubpathIdentity.config.allowed_claims))
-          .merge(_expires_at: Time.at(raw[:exp]))
+        [claims, Time.at(raw[:exp])]
       rescue ActiveSupport::MessageEncryptor::InvalidMessage, JSON::ParserError
         nil
       end

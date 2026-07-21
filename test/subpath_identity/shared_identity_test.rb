@@ -124,17 +124,30 @@ class SharedIdentityTest < Minitest::Test
     assert_nil SubpathIdentity::SharedIdentity.decode(SECRET, token)
   end
 
-  def test_decode_exposes_the_absolute_deadline_and_encode_preserves_an_explicit_one
+  def test_decode_with_expiry_exposes_the_absolute_deadline_and_encode_preserves_an_explicit_one
     deadline = Time.now + 120
     token = SubpathIdentity::SharedIdentity.encode(SECRET, expires_at: deadline, user_id: 1)
-    decoded = SubpathIdentity::SharedIdentity.decode(SECRET, token)
+    _claims, expires_at = SubpathIdentity::SharedIdentity.decode_with_expiry(SECRET, token)
 
-    assert_equal deadline.to_i, decoded[:_expires_at].to_i
+    assert_equal deadline.to_i, expires_at.to_i
 
     # And a default-encoded token carries roughly now + cookie_ttl.
     default_token = SubpathIdentity::SharedIdentity.encode(SECRET, user_id: 1)
-    default_decoded = SubpathIdentity::SharedIdentity.decode(SECRET, default_token)
-    assert_in_delta (Time.now + SubpathIdentity.config.cookie_ttl).to_i, default_decoded[:_expires_at].to_i, 5
+    _claims, default_expires_at = SubpathIdentity::SharedIdentity.decode_with_expiry(SECRET, default_token)
+    assert_in_delta (Time.now + SubpathIdentity.config.cookie_ttl).to_i, default_expires_at.to_i, 5
+  end
+
+  # The public contract: decode returns EXACTLY the configured
+  # allowed_claims keys — no transport metadata — so its result can be
+  # splatted straight back into encode without tripping the allowlist.
+  def test_decode_returns_exactly_the_allowed_claims_and_round_trips_into_encode
+    token = SubpathIdentity::SharedIdentity.encode(SECRET, user_id: 1, dark_mode: true)
+    decoded = SubpathIdentity::SharedIdentity.decode(SECRET, token)
+
+    assert_equal SubpathIdentity.config.allowed_claims.sort, decoded.keys.sort
+
+    re_encoded = SubpathIdentity::SharedIdentity.encode(SECRET, **decoded)
+    assert_equal decoded, SubpathIdentity::SharedIdentity.decode(SECRET, re_encoded)
   end
 
   def test_decode_returns_nil_for_a_token_with_no_version_field
