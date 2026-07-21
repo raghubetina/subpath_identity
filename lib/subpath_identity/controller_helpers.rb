@@ -31,13 +31,35 @@ module SubpathIdentity
     # Merges new claims over the current identity and re-signs the
     # cookie — so writing one claim (e.g. toggling a preference) doesn't
     # clobber others (e.g. sign the visitor out).
-    def write_shared_identity(**claims)
+    #
+    # The identity's ABSOLUTE deadline is preserved across ordinary
+    # writes: while a signed-in identity exists, its original
+    # _expires_at is carried into the new cookie, so a preference toggle
+    # never extends the identity's life — without this, the TTL is an
+    # idle timeout that any cookie holder (a replayed copy, a browser
+    # whose account was since closed) could renew forever.
+    #
+    # renew_lifetime: true mints a fresh now + cookie_ttl window. Pass
+    # it ONLY from an action backed by the identity owner's real
+    # authentication — a login or signup hook (see
+    # subpath_identity-provider's README) — never from a relying party
+    # or an unauthenticated preference write. When there's no signed-in
+    # identity to preserve (an anonymous preferences-only cookie, or a
+    # first sign-in), a fresh window is minted regardless.
+    def write_shared_identity(renew_lifetime: false, **claims)
       config = SubpathIdentity.config
+      preserved_deadline =
+        unless renew_lifetime
+          current_shared_identity[:_expires_at] if current_shared_identity[:user_id].present?
+        end
       merged = current_shared_identity.merge(claims).slice(*config.allowed_claims)
       cookies[config.cookie_name] = {
-        value: SharedIdentity.encode(config.shared_session_secret, **merged),
+        value: SharedIdentity.encode(config.shared_session_secret, expires_at: preserved_deadline, **merged),
         path: "/",
-        secure: Rails.env.production?,
+        # Same guard as RequireWorkerOrigin#allowed?: a partially-loaded
+        # Rails (the bare module without a booted application) defines
+        # ::Rails but not .env.
+        secure: defined?(::Rails) && ::Rails.respond_to?(:env) && ::Rails.env.production?,
         httponly: true,
         same_site: :lax
       }

@@ -13,7 +13,7 @@ reproducible build:
 
 ```ruby
 # Gemfile
-gem "subpath_identity", github: "raghubetina/subpath_identity", tag: "v0.3.1"
+gem "subpath_identity", github: "raghubetina/subpath_identity", tag: "v0.4.0"
 ```
 
 (Once it's published, `bundle add subpath_identity` will be the one-liner;
@@ -64,7 +64,8 @@ gives you:
 
 - `current_shared_identity` — a Hash with exactly your configured `allowed_claims` keys, defaults filled in for anything the cookie didn't have. Never `nil`.
 - `signed_in?` — `current_shared_identity[:user_id].present?`.
-- `write_shared_identity(**claims)` — merges the given claims over the current identity and re-signs the cookie, so writing one claim (toggling a theme, say) doesn't clobber the others (like signing someone out).
+- `write_shared_identity(**claims)` — merges the given claims over the current identity and re-signs the cookie, so writing one claim (toggling a theme, say) doesn't clobber the others (like signing someone out). The identity's **absolute deadline is preserved** across these writes — a preference toggle never extends the identity's life, so `cookie_ttl` is a hard bound from sign-in, not an idle timeout a cookie holder can renew forever. Pass `renew_lifetime: true` to mint a fresh window, and only from an action backed by the identity owner's real authentication (a login/signup hook — see `subpath_identity-provider`); with no signed-in identity present, a fresh window is minted automatically.
+- `clear_shared_identity` — deletes the cookie and resets the in-request identity to signed-out; the counterpart to `write_shared_identity` for when a downstream check learns the asserted identity is no longer valid.
 
 Every app in the cluster automatically runs `RequireWorkerOrigin` — no wiring needed beyond the Gemfile entry, it's registered via a Railtie. A request missing or mismatching the `X-Worker-Secret` header gets a `403`, before it reaches any controller, any other middleware your app installs, or an authentication gem's own routing (this matters specifically because some auth gems — Rodauth is one — answer their own routes from middleware and never reach a Rails controller at all, so a `before_action` can't protect them; this has to run ahead of everything).
 

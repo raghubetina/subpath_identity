@@ -1,5 +1,10 @@
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-21
+
+- **The cookie's expiry is now absolute, and the wire format is v3.** v2 re-stamped a fresh `expires_in` on every re-encode, so any ordinary claim write (a relying party's dark-mode toggle) silently renewed the whole identity's lifetime — the documented "24h bound on a captured cookie" was really an idle timeout any cookie holder could extend forever, including for an account closed since. v3 carries the deadline as an `exp` claim: `write_shared_identity` preserves the existing identity's deadline across ordinary writes and only mints a fresh window when there's no signed-in identity or when the caller passes the new `renew_lifetime: true` (pass it only from actions backed by the identity owner's real authentication — login/signup hooks). `decode` enforces `exp` (alongside the encryptor's own metadata) and exposes it as `:_expires_at`. All outstanding v2 cookies are invalidated on upgrade; users re-authenticate once.
+- `required_ruby_version` raised to `>= 3.3`, and CI now runs the declared floor against the committed lockfile. The lock pins `parallel 2.1.0`, whose own floor is Ruby 3.3 — so the previously declared 3.2 couldn't even `bundle install` from a fresh clone.
+
 ## [0.3.1] - 2026-07-18
 
 - Declared floors raised to what CI actually tests: `activesupport`/`railties >= 8.1`, `rack >= 3.0`. Rails 7 support was inherited from scaffolding defaults, never a deliberate commitment; rather than carry a 7.0 compatibility matrix for a version the maintainer will never run, the claim now matches the tested toolchain. (The short-lived `gemfiles/rails_7.gemfile` floor job added after 0.3.0 is removed; the portable `rack/mock` test require stays — it works on every Rack.)

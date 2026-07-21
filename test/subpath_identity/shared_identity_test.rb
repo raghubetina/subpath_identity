@@ -67,7 +67,7 @@ class SharedIdentityTest < Minitest::Test
   def test_decode_silently_drops_claims_outside_the_allowlist_even_if_present_in_the_payload
     key = Digest::SHA256.digest(SECRET)
     encryptor = ActiveSupport::MessageEncryptor.new(key, cipher: "aes-256-gcm")
-    payload = {user_id: 1, admin: true, v: SubpathIdentity::SharedIdentity::FORMAT_VERSION}.to_json
+    payload = {user_id: 1, admin: true, v: SubpathIdentity::SharedIdentity::FORMAT_VERSION, exp: Time.now.to_i + 60}.to_json
     token = encryptor.encrypt_and_sign(payload, expires_in: SubpathIdentity.config.cookie_ttl)
 
     decoded = SubpathIdentity::SharedIdentity.decode(SECRET, token)
@@ -88,6 +88,53 @@ class SharedIdentityTest < Minitest::Test
     token = encryptor.encrypt_and_sign(payload)
 
     assert_nil SubpathIdentity::SharedIdentity.decode(SECRET, token)
+  end
+
+  def test_decode_rejects_a_real_prior_format_version_2_token
+    key = Digest::SHA256.digest(SECRET)
+    encryptor = ActiveSupport::MessageEncryptor.new(key, cipher: "aes-256-gcm")
+    # The exact v2 cookie: versioned, iat-bearing, encryptor-level expiry
+    # but no exp claim in the payload — its deadline was re-stamped on
+    # every re-encode, which is precisely why v3 exists. Must be
+    # rejected by the version gate even while its encryptor window is
+    # still open.
+    payload = {user_id: 7, v: 2, iat: Time.now.to_i}.to_json
+    token = encryptor.encrypt_and_sign(payload, expires_in: SubpathIdentity.config.cookie_ttl)
+
+    assert_nil SubpathIdentity::SharedIdentity.decode(SECRET, token)
+  end
+
+  def test_decode_rejects_a_current_version_token_missing_the_exp_claim
+    key = Digest::SHA256.digest(SECRET)
+    encryptor = ActiveSupport::MessageEncryptor.new(key, cipher: "aes-256-gcm")
+    payload = {user_id: 1, v: SubpathIdentity::SharedIdentity::FORMAT_VERSION}.to_json
+    token = encryptor.encrypt_and_sign(payload, expires_in: SubpathIdentity.config.cookie_ttl)
+
+    assert_nil SubpathIdentity::SharedIdentity.decode(SECRET, token)
+  end
+
+  def test_decode_rejects_a_token_whose_exp_claim_is_in_the_past_even_inside_the_encryptor_window
+    key = Digest::SHA256.digest(SECRET)
+    encryptor = ActiveSupport::MessageEncryptor.new(key, cipher: "aes-256-gcm")
+    # A buggy writer could stamp a long encryptor window around a stale
+    # exp claim; the claim is authoritative.
+    payload = {user_id: 1, v: SubpathIdentity::SharedIdentity::FORMAT_VERSION, exp: Time.now.to_i - 60}.to_json
+    token = encryptor.encrypt_and_sign(payload, expires_in: SubpathIdentity.config.cookie_ttl)
+
+    assert_nil SubpathIdentity::SharedIdentity.decode(SECRET, token)
+  end
+
+  def test_decode_exposes_the_absolute_deadline_and_encode_preserves_an_explicit_one
+    deadline = Time.now + 120
+    token = SubpathIdentity::SharedIdentity.encode(SECRET, expires_at: deadline, user_id: 1)
+    decoded = SubpathIdentity::SharedIdentity.decode(SECRET, token)
+
+    assert_equal deadline.to_i, decoded[:_expires_at].to_i
+
+    # And a default-encoded token carries roughly now + cookie_ttl.
+    default_token = SubpathIdentity::SharedIdentity.encode(SECRET, user_id: 1)
+    default_decoded = SubpathIdentity::SharedIdentity.decode(SECRET, default_token)
+    assert_in_delta (Time.now + SubpathIdentity.config.cookie_ttl).to_i, default_decoded[:_expires_at].to_i, 5
   end
 
   def test_decode_returns_nil_for_a_token_with_no_version_field
