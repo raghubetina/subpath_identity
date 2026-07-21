@@ -86,6 +86,21 @@ class ControllerHelpersTest < Minitest::Test
     assert expires_at > stale_deadline, "a real auth event mints a new window"
   end
 
+  def test_shared_identity_expires_at_reflects_an_anonymous_preferences_cookie
+    # An anonymous visitor toggling a preference is signed out (no
+    # user_id) but still gets a cookie with a deadline — the reader
+    # tracks the cookie, not signed_in?.
+    controller = build_controller
+    controller.instance_variable_set(:@current_shared_identity, SubpathIdentity.config.claim_defaults)
+    controller.instance_variable_set(:@shared_identity_expires_at, nil)
+
+    controller.write_shared_identity(dark_mode: true)
+
+    refute controller.signed_in?, "still anonymous"
+    refute_nil controller.shared_identity_expires_at, "but the cookie has a deadline"
+    assert_in_delta (Time.now + SubpathIdentity.config.cookie_ttl).to_i, controller.shared_identity_expires_at.to_i, 5
+  end
+
   def test_a_write_with_no_signed_in_identity_mints_a_fresh_deadline
     controller = build_controller
     controller.instance_variable_set(

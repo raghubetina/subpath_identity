@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+## [0.5.1] - 2026-07-21
+
+- Doc fix: `ControllerHelpers#shared_identity_expires_at` returns `nil` when there's no valid shared cookie, not when `signed_in?` is false — an anonymous preferences-only cookie has a deadline and returns it. Behavior unchanged; the contract now matches it, with a regression test.
+
 ## [0.5.0] - 2026-07-21
 
 - **`write_shared_identity` now updates the in-request identity** (`current_shared_identity` and the deadline), exactly as `clear_shared_identity` already did. Previously two writes in one request each merged over the identity that arrived on the request and the second write's cookie silently discarded the first's claims — e.g. a relying party's cache-key reissue in a `before_action` wiped out by the action's own dark-mode toggle.

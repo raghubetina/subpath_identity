@@ -28,10 +28,13 @@ module SubpathIdentity
       current_shared_identity[:user_id].present?
     end
 
-    # The current identity's absolute deadline (a Time), or nil when
-    # there's no valid identity. Kept separate from
-    # current_shared_identity so that Hash keeps its exact-allowed-claims
-    # contract (and can round-trip into write_shared_identity).
+    # The current shared cookie's absolute deadline (a Time), or nil
+    # when there's no valid shared cookie. Note this tracks the COOKIE,
+    # not signed_in?: an anonymous, preferences-only cookie (no user_id,
+    # so signed_in? is false) still has an expiry and returns it here.
+    # Kept separate from current_shared_identity so that Hash keeps its
+    # exact-allowed-claims contract (and can round-trip into
+    # write_shared_identity).
     def shared_identity_expires_at
       @shared_identity_expires_at
     end
