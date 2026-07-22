@@ -13,7 +13,7 @@ reproducible build:
 
 ```ruby
 # Gemfile
-gem "subpath_identity", github: "raghubetina/subpath_identity", tag: "v0.5.1"
+gem "subpath_identity", github: "raghubetina/subpath_identity", tag: "v0.5.2"
 ```
 
 (Once it's published, `bundle add subpath_identity` will be the one-liner;
@@ -76,9 +76,16 @@ Read this before adopting the gem — it's the security property you're buying i
 
 The shared cookie is **symmetric**: it's authenticated encryption keyed on `SHARED_SESSION_SECRET`, and every app that holds the secret can both *read* and *mint* it. That coupling is inherent to symmetric cryptography — the read key is the write key — so any app you let read the identity can also forge one. There is no configuration that separates "verify" from "mint" here, because HMAC/symmetric schemes fundamentally can't.
 
-**This gem therefore assumes every app sharing the secret is mutually trusted** — a cluster one operator owns and deploys, not subpaths rented to third parties. If one of those apps is compromised, it can mint a cookie asserting any `user_id` (impersonating a *display* identity anywhere the cookie is read) and read that account's data from an identity owner's internal API. Gating every real mutation behind your actual auth session rather than `signed_in?` (see below) keeps the damage to display/PII rather than data changes — but it does not remove it. That's the accepted cost of a shared secret.
+**This gem therefore assumes every app sharing the secret is mutually trusted** — a cluster one operator owns and deploys, not subpaths rented to third parties. If one of those apps is compromised, it can mint a cookie asserting any `user_id` (impersonating a *display* identity anywhere the cookie is read) and read that account's data from an identity owner's internal API.
 
-**If you need relying parties you don't fully trust** — another team's app, a tenant, anything third-party — this mechanism is not enough, by design. Make the identity owner the sole *issuer*: either root-signed tokens (owner holds a private key; relying parties get a verify-only public key) or opaque provider-issued tokens resolved by introspection, and move client-writable preferences (a theme toggle, say) to a separate cookie so relying parties never need mint capability at all. Both are real design changes, not flags. Note the honest limit of even those: a compromised relying party still sees the identity and PII of its *own* visitors, who hand it the credential just by loading a page — the asymmetric upgrade stops the *escalation* (forging identities for users who never visited it), not that.
+Gating every real mutation behind your actual auth session rather than `signed_in?` (see below) is necessary, but whether it's *sufficient* against a compromised relying party depends on your topology, and this is the part most easily gotten wrong:
+
+- **Separate origins** (the identity owner and each relying party on distinct hostnames): the browser keeps them apart. A compromised relying party's script can't cause the browser to send the owner's session cookie or read the owner's responses, so gating mutations behind the real session does hold the damage to display/PII.
+- **One shared origin** (path-based routing under a single hostname — e.g. `owner.example/` and `owner.example/app2`): it does *not* hold. Same-origin script served by a compromised relying party can ride a logged-in visitor's real session straight through your auth check and mutate data in their browser — the auth check authorizes it because the session is genuine. On a shared origin, a compromised relying party is therefore equivalent to a compromised owner for anything a logged-in visitor's browser can reach; the shared-secret forge is only the server-side half of that. The auth-session gate still earns its keep (it closes the server-side forge), but the browser-authority half needs an origin boundary, not a code change.
+
+That's the accepted cost of a shared secret *plus* a shared origin. Keep relying parties you don't fully trust on their own origins.
+
+**If you need relying parties you don't fully trust** — another team's app, a tenant, anything third-party — this mechanism is not enough, by design. Make the identity owner the sole *issuer*: either root-signed tokens (owner holds a private key; relying parties get a verify-only public key) or opaque provider-issued tokens resolved by introspection, and move client-writable preferences (a theme toggle, say) to a separate cookie so relying parties never need mint capability at all. Both are real design changes, not flags. Two honest limits of even those. First, a compromised relying party still sees the identity and PII of its *own* visitors, who hand it the credential just by loading a page — the asymmetric upgrade stops the *escalation* (forging identities for users who never visited it), not that. Second, asymmetric issuance is only half the fix: it closes the forge-and-read vector, but a relying party sharing your *origin* can still ride a logged-in visitor's session to reach your mutation paths, which a verify-only credential does nothing about. An untrusted relying party needs both a verify-only credential *and* its own origin.
 
 ## What this gem doesn't do
 

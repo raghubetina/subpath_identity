@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+## [0.5.2] - 2026-07-22
+
+- Trust-model correction (docs only; no code change). The section claimed that gating mutations behind your real auth session "keeps the damage to display/PII rather than data changes." That's only true when the identity owner and relying parties are on **separate origins**. On **one shared origin** (path-based routing under a single hostname), it is false: a compromised relying party's same-origin script can ride a logged-in visitor's real session straight through the auth check and mutate data in their browser — the check authorizes it because the session is genuine. The Trust model now states this conditionally, and notes that asymmetric issuance closes only the forge-and-read vector, not the browser-authority one — an untrusted relying party needs both a verify-only credential *and* its own origin. Surfaced by an adversarial review of the path-based reference deployment, where the identity owner and relying parties share one hostname.
+
 ## [0.5.1] - 2026-07-21
 
 - Doc fix: `ControllerHelpers#shared_identity_expires_at` returns `nil` when there's no valid shared cookie, not when `signed_in?` is false — an anonymous preferences-only cookie has a deadline and returns it. Behavior unchanged; the contract now matches it, with a regression test.
